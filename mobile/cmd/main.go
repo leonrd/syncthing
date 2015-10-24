@@ -1000,12 +1000,12 @@ func resetDB() error {
 	return os.RemoveAll(locations[locDatabase])
 }
 
-func restart() {
+func Restart() {
 	l.Infoln("Restarting")
 	stop <- exitRestarting
 }
 
-func shutdown() {
+func Shutdown() {
 	l.Infoln("Shutting down")
 	stop <- exitSuccess
 }
@@ -1060,7 +1060,7 @@ func standbyMonitor() {
 			// things a moment to stabilize.
 			time.Sleep(restartDelay)
 
-			restart()
+			Restart()
 			return
 		}
 		now = time.Now()

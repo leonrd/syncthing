@@ -9,16 +9,36 @@
 import UIKit
 import Syncthing
 
-class ViewController: UIViewController {
-
-    override func viewDidLoad() {
+public class ViewController: UIViewController {
+    
+    @IBOutlet weak public var webView: UIWebView?
+    
+    override public func viewDidLoad() {
         super.viewDidLoad()
         
-        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0)) { () -> Void in
-            Syncthing.GoSyncthingRun()
-        }	
+        UIApplication.sharedApplication().idleTimerDisabled = true
         
-        UIApplication.sharedApplication().idleTimerDisabled = true;
+        Syncthing.GoSyncthingRun()
+    }
+
+    override public func viewWillAppear(animated: Bool) {
+        super.viewWillAppear(animated)
+        
+        webView?.loadRequest(NSURLRequest(URL: NSURL(string: "http://127.0.0.1:8384")!))
+    }
+    
+    @IBAction func reload(sender: AnyObject) {
+        webView?.reload()
+    }
+}
+
+extension ViewController: UIWebViewDelegate {
+    
+    public func webView(webView: UIWebView, didFailLoadWithError error: NSError?) {
+        let delayTime = dispatch_time(DISPATCH_TIME_NOW, Int64(1 * Double(NSEC_PER_SEC)))
+        dispatch_after(delayTime, dispatch_get_main_queue()) {
+            webView.reload()
+        }
     }
 }
 

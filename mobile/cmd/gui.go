@@ -609,7 +609,7 @@ func (s *apiSvc) getSystemConfigInsync(w http.ResponseWriter, r *http.Request) {
 
 func (s *apiSvc) postSystemRestart(w http.ResponseWriter, r *http.Request) {
 	s.flushResponse(`{"ok": "restarting"}`, w)
-	go restart()
+	go Restart()
 }
 
 func (s *apiSvc) postSystemReset(w http.ResponseWriter, r *http.Request) {
@@ -635,12 +635,12 @@ func (s *apiSvc) postSystemReset(w http.ResponseWriter, r *http.Request) {
 		s.flushResponse(`{"ok": "resetting folder `+folder+`"}`, w)
 	}
 
-	go restart()
+	go Restart()
 }
 
 func (s *apiSvc) postSystemShutdown(w http.ResponseWriter, r *http.Request) {
 	s.flushResponse(`{"ok": "shutting down"}`, w)
-	go shutdown()
+	go Shutdown()
 }
 
 func (s *apiSvc) flushResponse(resp string, w http.ResponseWriter) {
