@@ -213,7 +213,7 @@ var (
 	innerProcess   = os.Getenv("STNORESTART") != "" || os.Getenv("STMONITORED") != ""
 )
 
-func main() {
+func Run() {
 	if runtime.GOOS == "windows" {
 		// On Windows, we use a log file by default. Setting the -logfile flag
 		// to "-" disables this behavior.
@@ -241,6 +241,8 @@ func main() {
 	flag.BoolVar(&auditEnabled, "audit", false, "Write events to audit file")
 	flag.BoolVar(&verbose, "verbose", false, "Print verbose log output")
 	flag.BoolVar(&paused, "paused", false, "Start with all devices paused")
+
+	noRestart = true;
 
 	longUsage := fmt.Sprintf(extraUsage, baseDirs["config"], debugFacilities())
 	flag.Usage = usageFor(flag.CommandLine, usage, longUsage)
