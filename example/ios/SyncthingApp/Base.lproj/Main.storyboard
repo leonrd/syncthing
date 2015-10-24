@@ -36,6 +36,11 @@
                         </constraints>
                     </view>
                     <navigationItem key="navigationItem" title="Syncthing" id="diP-Ug-XO6">
+                        <barButtonItem key="leftBarButtonItem" enabled="NO" title="Back" id="Arj-gz-QwD">
+                            <connections>
+                                <action selector="back:" destination="BYZ-38-t0r" id="vnL-b0-0t7"/>
+                            </connections>
+                        </barButtonItem>
                         <barButtonItem key="rightBarButtonItem" systemItem="refresh" id="0VV-ma-8Yj">
                             <connections>
                                 <action selector="reload:" destination="BYZ-38-t0r" id="1HO-i3-1ol"/>
@@ -43,6 +48,7 @@
                         </barButtonItem>
                     </navigationItem>
                     <connections>
+                        <outlet property="backButton" destination="Arj-gz-QwD" id="1uC-Wn-Tf4"/>
                         <outlet property="webView" destination="etD-Qa-rJd" id="qS6-4Z-3FC"/>
                     </connections>
                 </viewController>

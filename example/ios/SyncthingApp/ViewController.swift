@@ -11,7 +11,8 @@ import Syncthing
 
 public class ViewController: UIViewController {
     
-    @IBOutlet weak public var webView: UIWebView?
+    @IBOutlet weak var webView: UIWebView?
+    @IBOutlet weak var backButton: UIBarButtonItem?
     
     override public func viewDidLoad() {
         super.viewDidLoad()
@@ -30,9 +31,18 @@ public class ViewController: UIViewController {
     @IBAction func reload(sender: AnyObject) {
         webView?.reload()
     }
+    
+    @IBAction func back(sender: AnyObject) {
+        webView?.goBack()
+    }
 }
 
 extension ViewController: UIWebViewDelegate {
+    
+    public func webViewDidFinishLoad(webView: UIWebView) {
+        self.title = webView.request?.URL?.absoluteString
+        self.backButton?.enabled = webView.canGoBack
+    }
     
     public func webView(webView: UIWebView, didFailLoadWithError error: NSError?) {
         let delayTime = dispatch_time(DISPATCH_TIME_NOW, Int64(1 * Double(NSEC_PER_SEC)))
