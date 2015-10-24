@@ -113,7 +113,7 @@ func main() {
 			if noupgrade {
 				tags = []string{"noupgrade"}
 			}
-			gomobile_build("ios", pkg, tags)
+			gomobileBuild("ios", pkg, tags)
 
 		case "test":
 			test("./...")
@@ -239,7 +239,7 @@ func build(pkg string, tags []string) {
 	runPrint("go", args...)
 }
 
-func gomobile_build(target string, pkg string, tags []string) {
+func gomobileBuild(target string, pkg string, tags []string) {
 
 	args := []string{"bind", "-target", target, "-ldflags", ldflags()}
 	if len(tags) > 0 {
