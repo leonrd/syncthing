@@ -107,6 +107,14 @@ func main() {
 			}
 			build(pkg, tags)
 
+		case "build-ios":
+			pkg := "./mobile/syncthing"
+			var tags []string
+			if noupgrade {
+				tags = []string{"noupgrade"}
+			}
+			gomobile_build("ios", pkg, tags)
+
 		case "test":
 			test("./...")
 
@@ -229,6 +237,20 @@ func build(pkg string, tags []string) {
 	args = append(args, pkg)
 	setBuildEnv()
 	runPrint("go", args...)
+}
+
+func gomobile_build(target string, pkg string, tags []string) {
+
+	args := []string{"bind", "-target", target, "-ldflags", ldflags()}
+	if len(tags) > 0 {
+		args = append(args, "-tags", strings.Join(tags, ","))
+	}
+	if race {
+		args = append(args, "-race")
+	}
+	args = append(args, pkg)
+	setBuildEnv()
+	runPrint("gomobile", args...)
 }
 
 func buildTar() {
