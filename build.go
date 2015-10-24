@@ -108,7 +108,7 @@ func main() {
 			build(pkg, tags)
 
 		case "build-ios":
-			pkg := "./mobile/syncthing"
+			pkg := "./mobile"
 			var tags []string
 			if noupgrade {
 				tags = []string{"noupgrade"}
