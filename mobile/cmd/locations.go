@@ -38,7 +38,7 @@ const (
 // Platform dependent directories
 var baseDirs = map[string]string{
 	"config": defaultConfigDir(), // Overridden by -home flag
-	"home":   homeDir(),          // User's home directory, *not* -home flag
+	"home":   documentsDir(),          // User's documents directory, *not* -home flag
 }
 
 // Use the variables from baseDirs here
@@ -86,7 +86,7 @@ func defaultConfigDir() string {
 		return filepath.Join(os.Getenv("AppData"), "Syncthing")
 
 	case "darwin":
-		dir, err := osutil.ExpandTilde("~/Library/Application Support/Syncthing")
+		dir, err := osutil.ExpandTilde("~/Documents/Config/Syncthing")
 		if err != nil {
 			l.Fatalln(err)
 		}
@@ -104,13 +104,13 @@ func defaultConfigDir() string {
 	}
 }
 
-// homeDir returns the user's home directory, or dies trying.
-func homeDir() string {
-	home, err := osutil.ExpandTilde("~")
+// documentsDir returns the user's documents directory, or dies trying.
+func documentsDir() string {
+	documents, err := osutil.ExpandTilde("~/Documents")
 	if err != nil {
 		l.Fatalln(err)
 	}
-	return home
+	return documents
 }
 
 func timestampedLoc(key locationEnum) string {
