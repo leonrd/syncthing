@@ -11,7 +11,6 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -30,7 +29,6 @@ import (
 	"github.com/syncthing/syncthing/lib/config"
 	"github.com/syncthing/syncthing/lib/connections"
 	"github.com/syncthing/syncthing/lib/db"
-	"github.com/syncthing/syncthing/lib/dialer"
 	"github.com/syncthing/syncthing/lib/discover"
 	"github.com/syncthing/syncthing/lib/events"
 	"github.com/syncthing/syncthing/lib/logger"
@@ -40,7 +38,6 @@ import (
 	"github.com/syncthing/syncthing/lib/relay"
 	"github.com/syncthing/syncthing/lib/symlinks"
 	"github.com/syncthing/syncthing/lib/tlsutil"
-	"github.com/syncthing/syncthing/lib/upgrade"
 
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/errors"
@@ -64,9 +61,7 @@ var (
 const (
 	exitSuccess            = 0
 	exitError              = 1
-	exitNoUpgradeAvailable = 2
-	exitRestarting         = 3
-	exitUpgrading          = 4
+	exitRestarting         = 2
 )
 
 const (
@@ -172,8 +167,6 @@ are mostly useful for developers. Use with care.
  STPERFSTATS     Write running performance statistics to perf-$pid.csv. Not
                  supported on Windows.
 
- STNOUPGRADE     Disable automatic upgrades.
-
  GOMAXPROCS      Set the maximum number of CPU cores to use. Defaults to all
                  available CPU cores.
 
@@ -194,9 +187,6 @@ The following are valid values for the STTRACE variable:
 var (
 	reset          bool
 	showVersion    bool
-	doUpgrade      bool
-	doUpgradeCheck bool
-	upgradeTo      string
 	noBrowser      bool
 	noConsole      bool
 	generateDir    string
@@ -205,7 +195,6 @@ var (
 	verbose        bool
 	paused         bool
 	noRestart      = os.Getenv("STNORESTART") != ""
-	noUpgrade      = os.Getenv("STNOUPGRADE") != ""
 	profiler       = os.Getenv("STPROFILER")
 	guiAssets      = os.Getenv("STGUIASSETS")
 	cpuProfile     = os.Getenv("STCPUPROFILE") != ""
@@ -234,10 +223,7 @@ func Run() {
 	flag.BoolVar(&noBrowser, "no-browser", false, "Do not start browser")
 	flag.BoolVar(&noRestart, "no-restart", noRestart, "Do not restart; just exit")
 	flag.BoolVar(&reset, "reset", false, "Reset the database")
-	flag.BoolVar(&doUpgrade, "upgrade", false, "Perform upgrade")
-	flag.BoolVar(&doUpgradeCheck, "upgrade-check", false, "Check for available upgrade")
 	flag.BoolVar(&showVersion, "version", false, "Show version")
-	flag.StringVar(&upgradeTo, "upgrade-to", upgradeTo, "Force upgrade directly from specified URL")
 	flag.BoolVar(&auditEnabled, "audit", false, "Write events to audit file")
 	flag.BoolVar(&verbose, "verbose", false, "Print verbose log output")
 	flag.BoolVar(&paused, "paused", false, "Start with all devices paused")
@@ -345,65 +331,12 @@ func Run() {
 	// Ensure that our home directory exists.
 	ensureDir(baseDirs["config"], 0700)
 
-	if upgradeTo != "" {
-		err := upgrade.ToURL(upgradeTo)
-		if err != nil {
-			l.Fatalln("Upgrade:", err) // exits 1
-		}
-		l.Okln("Upgraded from", upgradeTo)
-		return
-	}
-
-	if doUpgrade || doUpgradeCheck {
-		releasesURL := "https://api.github.com/repos/syncthing/syncthing/releases?per_page=30"
-		if cfg, _, err := loadConfig(locations[locConfigFile]); err == nil {
-			releasesURL = cfg.Options().ReleasesURL
-		}
-		rel, err := upgrade.LatestRelease(releasesURL, Version)
-		if err != nil {
-			l.Fatalln("Upgrade:", err) // exits 1
-		}
-
-		if upgrade.CompareVersions(rel.Tag, Version) <= 0 {
-			l.Infof("No upgrade available (current %q >= latest %q).", Version, rel.Tag)
-			os.Exit(exitNoUpgradeAvailable)
-		}
-
-		l.Infof("Upgrade available (current %q < latest %q)", Version, rel.Tag)
-
-		if doUpgrade {
-			// Use leveldb database locks to protect against concurrent upgrades
-			_, err = leveldb.OpenFile(locations[locDatabase], &opt.Options{OpenFilesCacheCapacity: 100})
-			if err != nil {
-				l.Infoln("Attempting upgrade through running Syncthing...")
-				err = upgradeViaRest()
-				if err != nil {
-					l.Fatalln("Upgrade:", err)
-				}
-				l.Okln("Syncthing upgrading")
-				return
-			}
-
-			err = upgrade.To(rel)
-			if err != nil {
-				l.Fatalln("Upgrade:", err) // exits 1
-			}
-			l.Okf("Upgraded to %q", rel.Tag)
-		}
-
-		return
-	}
-
 	if reset {
 		resetDB()
 		return
 	}
 
-	if noRestart {
-		syncthingMain()
-	} else {
-		monitorMain()
-	}
+	syncthingMain()
 }
 
 func debugFacilities() string {
@@ -426,40 +359,6 @@ func debugFacilities() string {
 		fmt.Fprintf(b, " %-*s - %s\n", maxLen, name, facilities[name])
 	}
 	return b.String()
-}
-
-func upgradeViaRest() error {
-	cfg, err := config.Load(locations[locConfigFile], protocol.LocalDeviceID)
-	if err != nil {
-		return err
-	}
-	target := cfg.GUI().URL()
-	r, _ := http.NewRequest("POST", target+"/rest/system/upgrade", nil)
-	r.Header.Set("X-API-Key", cfg.GUI().APIKey())
-
-	tr := &http.Transport{
-		Dial:            dialer.Dial,
-		Proxy:           http.ProxyFromEnvironment,
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	client := &http.Client{
-		Transport: tr,
-		Timeout:   60 * time.Second,
-	}
-	resp, err := client.Do(r)
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode != 200 {
-		bs, err := ioutil.ReadAll(resp.Body)
-		defer resp.Body.Close()
-		if err != nil {
-			return err
-		}
-		return errors.New(string(bs))
-	}
-
-	return err
 }
 
 func syncthingMain() {
@@ -813,16 +712,6 @@ func syncthingMain() {
 		go standbyMonitor()
 	}
 
-	if opts.AutoUpgradeIntervalH > 0 {
-		if noUpgrade {
-			l.Infof("No automatic upgrades; STNOUPGRADE environment variable defined.")
-		} else if IsRelease {
-			go autoUpgrade(cfg)
-		} else {
-			l.Infof("No automatic upgrades; %s is not a release version.", Version)
-		}
-	}
-
 	events.Default.Log(events.StartupComplete, map[string]string{
 		"myID": myID.String(),
 	})
@@ -830,7 +719,7 @@ func syncthingMain() {
 
 	cleanConfigDirectory()
 
-	code := <-stop
+	<-stop
 
 	mainSvc.Stop()
 
@@ -839,8 +728,6 @@ func syncthingMain() {
 	if cpuProfile {
 		pprof.StopCPUProfile()
 	}
-
-	os.Exit(code)
 }
 
 // printHashRate prints the hashing performance in MB/s, formatting it with
@@ -1064,54 +951,6 @@ func standbyMonitor() {
 			return
 		}
 		now = time.Now()
-	}
-}
-
-func autoUpgrade(cfg *config.Wrapper) {
-	timer := time.NewTimer(0)
-	sub := events.Default.Subscribe(events.DeviceConnected)
-	for {
-		select {
-		case event := <-sub.C():
-			data, ok := event.Data.(map[string]string)
-			if !ok || data["clientName"] != "syncthing" || upgrade.CompareVersions(data["clientVersion"], Version) != upgrade.Newer {
-				continue
-			}
-			l.Infof("Connected to device %s with a newer version (current %q < remote %q). Checking for upgrades.", data["id"], Version, data["clientVersion"])
-		case <-timer.C:
-		}
-
-		rel, err := upgrade.LatestRelease(cfg.Options().ReleasesURL, Version)
-		if err == upgrade.ErrUpgradeUnsupported {
-			events.Default.Unsubscribe(sub)
-			return
-		}
-		if err != nil {
-			// Don't complain too loudly here; we might simply not have
-			// internet connectivity, or the upgrade server might be down.
-			l.Infoln("Automatic upgrade:", err)
-			timer.Reset(time.Duration(cfg.Options().AutoUpgradeIntervalH) * time.Hour)
-			continue
-		}
-
-		if upgrade.CompareVersions(rel.Tag, Version) != upgrade.Newer {
-			// Skip equal, older or majorly newer (incompatible) versions
-			timer.Reset(time.Duration(cfg.Options().AutoUpgradeIntervalH) * time.Hour)
-			continue
-		}
-
-		l.Infof("Automatic upgrade (current %q < latest %q)", Version, rel.Tag)
-		err = upgrade.To(rel)
-		if err != nil {
-			l.Warnln("Automatic upgrade:", err)
-			timer.Reset(time.Duration(cfg.Options().AutoUpgradeIntervalH) * time.Hour)
-			continue
-		}
-		events.Default.Unsubscribe(sub)
-		l.Warnf("Automatically upgraded to version %q. Restarting in 1 minute.", rel.Tag)
-		time.Sleep(time.Minute)
-		stop <- exitUpgrading
-		return
 	}
 }
 

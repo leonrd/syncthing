@@ -23,7 +23,6 @@ import (
 	"github.com/syncthing/syncthing/lib/dialer"
 	"github.com/syncthing/syncthing/lib/model"
 	"github.com/syncthing/syncthing/lib/protocol"
-	"github.com/syncthing/syncthing/lib/upgrade"
 	"github.com/thejerf/suture"
 )
 
@@ -215,8 +214,8 @@ func reportData(cfg *config.Wrapper, m *model.Model) map[string]interface{} {
 
 	res["usesRateLimit"] = cfg.Options().MaxRecvKbps > 0 || cfg.Options().MaxSendKbps > 0
 
-	res["upgradeAllowedManual"] = !(upgrade.DisabledByCompilation || noUpgrade)
-	res["upgradeAllowedAuto"] = !(upgrade.DisabledByCompilation || noUpgrade) && cfg.Options().AutoUpgradeIntervalH > 0
+	res["upgradeAllowedManual"] = false
+	res["upgradeAllowedAuto"] = false
 
 	return res
 }

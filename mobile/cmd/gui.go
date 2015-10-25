@@ -825,23 +825,8 @@ func (s *apiSvc) getEvents(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *apiSvc) getSystemUpgrade(w http.ResponseWriter, r *http.Request) {
-	if noUpgrade {
-		http.Error(w, upgrade.ErrUpgradeUnsupported.Error(), 500)
-		return
-	}
-	rel, err := upgrade.LatestRelease(s.cfg.Options().ReleasesURL, Version)
-	if err != nil {
-		http.Error(w, err.Error(), 500)
-		return
-	}
-	res := make(map[string]interface{})
-	res["running"] = Version
-	res["latest"] = rel.Tag
-	res["newer"] = upgrade.CompareVersions(rel.Tag, Version) == upgrade.Newer
-	res["majorNewer"] = upgrade.CompareVersions(rel.Tag, Version) == upgrade.MajorNewer
-
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	json.NewEncoder(w).Encode(res)
+	http.Error(w, upgrade.ErrUpgradeUnsupported.Error(), 500)
+	return
 }
 
 func (s *apiSvc) getDeviceID(w http.ResponseWriter, r *http.Request) {
@@ -872,25 +857,8 @@ func (s *apiSvc) getLang(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *apiSvc) postSystemUpgrade(w http.ResponseWriter, r *http.Request) {
-	rel, err := upgrade.LatestRelease(s.cfg.Options().ReleasesURL, Version)
-	if err != nil {
-		l.Warnln("getting latest release:", err)
-		http.Error(w, err.Error(), 500)
-		return
-	}
-
-	if upgrade.CompareVersions(rel.Tag, Version) > upgrade.Equal {
-		err = upgrade.To(rel)
-		if err != nil {
-			l.Warnln("upgrading:", err)
-			http.Error(w, err.Error(), 500)
-			return
-		}
-
-		s.flushResponse(`{"ok": "restarting"}`, w)
-		l.Infoln("Upgrading")
-		stop <- exitUpgrading
-	}
+	http.Error(w, upgrade.ErrUpgradeUnsupported.Error(), 500)
+	return
 }
 
 func (s *apiSvc) postSystemPause(w http.ResponseWriter, r *http.Request) {
