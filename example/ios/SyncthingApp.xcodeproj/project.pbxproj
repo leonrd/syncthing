@@ -16,7 +16,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		B309CCC41BDB9DA4000513F0 /* Syncthing.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; path = Syncthing.framework; sourceTree = "<group>"; };
+		B309CCC41BDB9DA4000513F0 /* Syncthing.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Syncthing.framework; path = ../../Syncthing.framework; sourceTree = "<group>"; };
 		B3AEA99D1BDB94700070B8B6 /* SyncthingApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SyncthingApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B3AEA9A01BDB94700070B8B6 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		B3AEA9A21BDB94700070B8B6 /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };

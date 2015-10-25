@@ -7,9 +7,7 @@
 package cmd
 
 import (
-	"bytes"
 	"crypto/tls"
-	"flag"
 	"fmt"
 	"log"
 	"net"
@@ -21,7 +19,6 @@ import (
 	"regexp"
 	"runtime"
 	"runtime/pprof"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -59,9 +56,9 @@ var (
 )
 
 const (
-	exitSuccess            = 0
-	exitError              = 1
-	exitRestarting         = 2
+	exitSuccess    = 0
+	exitError      = 1
+	exitRestarting = 2
 )
 
 const (
@@ -107,258 +104,77 @@ func init() {
 	LongVersion = fmt.Sprintf(`syncthing %s "%s" (%s %s-%s %s) %s@%s %s`, Version, Codename, runtime.Version(), runtime.GOOS, runtime.GOARCH, BuildEnv, BuildUser, BuildHost, date)
 
 	if os.Getenv("STTRACE") != "" {
-		logFlags = log.Ltime | log.Ldate | log.Lmicroseconds | log.Lshortfile
+		LogFlags = log.Ltime | log.Ldate | log.Lmicroseconds | log.Lshortfile
 	}
 }
 
 var (
-	myID     protocol.DeviceID
-	confDir  string
-	logFlags = log.Ltime
-	stop     = make(chan int)
-	cert     tls.Certificate
-	lans     []*net.IPNet
+	myID protocol.DeviceID
+	stop = make(chan int)
+	cert tls.Certificate
+	lans []*net.IPNet
 )
 
-const (
-	usage      = "syncthing [options]"
-	extraUsage = `
-The default configuration directory is:
-
-  %s
-
-
-The -logflags value is a sum of the following:
-
-   1  Date
-   2  Time
-   4  Microsecond time
-   8  Long filename
-  16  Short filename
-
-I.e. to prefix each log line with date and time, set -logflags=3 (1 + 2 from
-above). The value 0 is used to disable all of the above. The default is to
-show time only (2).
-
-
-Development Settings
---------------------
-
-The following environment variables modify syncthing's behavior in ways that
-are mostly useful for developers. Use with care.
-
- STGUIASSETS     Directory to load GUI assets from. Overrides compiled in
-                 assets.
-
- STTRACE         A comma separated string of facilities to trace. The valid
-                 facility strings listed below.
-
- STPROFILER      Set to a listen address such as "127.0.0.1:9090" to start the
-                 profiler with HTTP access.
-
- STCPUPROFILE    Write a CPU profile to cpu-$pid.pprof on exit.
-
- STHEAPPROFILE   Write heap profiles to heap-$pid-$timestamp.pprof each time
-                 heap usage increases.
-
- STBLOCKPROFILE  Write block profiles to block-$pid-$timestamp.pprof every 20
-                 seconds.
-
- STPERFSTATS     Write running performance statistics to perf-$pid.csv. Not
-                 supported on Windows.
-
- GOMAXPROCS      Set the maximum number of CPU cores to use. Defaults to all
-                 available CPU cores.
-
- GOGC            Percentage of heap growth at which to trigger GC. Default is
-                 100. Lower numbers keep peak memory usage down, at the price
-                 of CPU usage (ie. performance).
-
-
-Debugging Facilities
---------------------
-
-The following are valid values for the STTRACE variable:
-
-%s`
-)
-
-// Command line and environment options
+// Environment options
 var (
-	reset          bool
-	showVersion    bool
-	noBrowser      bool
-	noConsole      bool
-	generateDir    string
-	logFile        string
-	auditEnabled   bool
-	verbose        bool
-	paused         bool
-	noRestart      = os.Getenv("STNORESTART") != ""
-	profiler       = os.Getenv("STPROFILER")
-	guiAssets      = os.Getenv("STGUIASSETS")
-	cpuProfile     = os.Getenv("STCPUPROFILE") != ""
-	stRestarting   = os.Getenv("STRESTART") != ""
-	innerProcess   = os.Getenv("STNORESTART") != "" || os.Getenv("STMONITORED") != ""
+	profiler   = os.Getenv("STPROFILER")
+	cpuProfile = os.Getenv("STCPUPROFILE") != ""
 )
 
-func Run() {
-	if runtime.GOOS == "windows" {
-		// On Windows, we use a log file by default. Setting the -logfile flag
-		// to "-" disables this behavior.
-		flag.StringVar(&logFile, "logfile", "", "Log file name (use \"-\" for stdout)")
+// Configuration options
+var (
+	ConfDir      string
+	GuiAddress   string
+	GuiAPIKey    string
+	GuiAssets    string
+	LogFile      string
+	LogFlags     int
+	AuditEnabled bool
+	Verbose      bool
+	Paused       bool
+)
 
-		// We also add an option to hide the console window
-		flag.BoolVar(&noConsole, "no-console", false, "Hide console window")
-	} else {
-		flag.StringVar(&logFile, "logfile", "-", "Log file name (use \"-\" for stdout)")
-	}
+func Run() error {
 
-	var guiAddress, guiAPIKey string
-	flag.StringVar(&generateDir, "generate", "", "Generate key and config in specified dir, then exit")
-	flag.StringVar(&guiAddress, "gui-address", guiAddress, "Override GUI address")
-	flag.StringVar(&guiAPIKey, "gui-apikey", guiAPIKey, "Override GUI API key")
-	flag.StringVar(&confDir, "home", "", "Set configuration directory")
-	flag.IntVar(&logFlags, "logflags", logFlags, "Select information in log line prefix")
-	flag.BoolVar(&noBrowser, "no-browser", false, "Do not start browser")
-	flag.BoolVar(&noRestart, "no-restart", noRestart, "Do not restart; just exit")
-	flag.BoolVar(&reset, "reset", false, "Reset the database")
-	flag.BoolVar(&showVersion, "version", false, "Show version")
-	flag.BoolVar(&auditEnabled, "audit", false, "Write events to audit file")
-	flag.BoolVar(&verbose, "verbose", false, "Print verbose log output")
-	flag.BoolVar(&paused, "paused", false, "Start with all devices paused")
-
-	noRestart = true;
-
-	longUsage := fmt.Sprintf(extraUsage, baseDirs["config"], debugFacilities())
-	flag.Usage = usageFor(flag.CommandLine, usage, longUsage)
-	flag.Parse()
-
-	if guiAddress != "" {
+	if GuiAddress != "" {
 		// The config picks this up from the environment.
-		os.Setenv("STGUIADDRESS", guiAddress)
+		os.Setenv("STGUIADDRESS", GuiAddress)
 	}
-	if guiAPIKey != "" {
+	if GuiAPIKey != "" {
 		// The config picks this up from the environment.
-		os.Setenv("STGUIAPIKEY", guiAPIKey)
+		os.Setenv("STGUIAPIKEY", GuiAPIKey)
 	}
 
-	if noConsole {
-		osutil.HideConsole()
-	}
-
-	if confDir != "" {
+	if ConfDir != "" {
 		// Not set as default above because the string can be really long.
-		baseDirs["config"] = confDir
+		baseDirs["config"] = ConfDir
 	}
 
 	if err := expandLocations(); err != nil {
-		l.Fatalln(err)
+		return err
 	}
 
-	if guiAssets == "" {
-		guiAssets = locations[locGUIAssets]
+	if GuiAssets == "" {
+		GuiAssets = locations[locGUIAssets]
 	}
 
-	if logFile == "" {
+	if LogFile == "" {
 		// Use the default log file location
-		logFile = locations[locLogFile]
+		LogFile = locations[locLogFile]
 	}
 
-	if showVersion {
-		fmt.Println(LongVersion)
-		return
-	}
-
-	l.SetFlags(logFlags)
-
-	if generateDir != "" {
-		dir, err := osutil.ExpandTilde(generateDir)
-		if err != nil {
-			l.Fatalln("generate:", err)
-		}
-
-		info, err := os.Stat(dir)
-		if err == nil && !info.IsDir() {
-			l.Fatalln(dir, "is not a directory")
-		}
-		if err != nil && os.IsNotExist(err) {
-			err = osutil.MkdirAll(dir, 0700)
-			if err != nil {
-				l.Fatalln("generate:", err)
-			}
-		}
-
-		certFile, keyFile := filepath.Join(dir, "cert.pem"), filepath.Join(dir, "key.pem")
-		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
-		if err == nil {
-			l.Warnln("Key exists; will not overwrite.")
-			l.Infoln("Device ID:", protocol.NewDeviceID(cert.Certificate[0]))
-		} else {
-			cert, err = tlsutil.NewCertificate(certFile, keyFile, tlsDefaultCommonName, tlsRSABits)
-			if err != nil {
-				l.Fatalln("Create certificate:", err)
-			}
-			myID = protocol.NewDeviceID(cert.Certificate[0])
-			if err != nil {
-				l.Fatalln("Load certificate:", err)
-			}
-			if err == nil {
-				l.Infoln("Device ID:", protocol.NewDeviceID(cert.Certificate[0]))
-			}
-		}
-
-		cfgFile := filepath.Join(dir, "config.xml")
-		if _, err := os.Stat(cfgFile); err == nil {
-			l.Warnln("Config exists; will not overwrite.")
-			return
-		}
-		var myName, _ = os.Hostname()
-		var newCfg = defaultConfig(myName)
-		var cfg = config.Wrap(cfgFile, newCfg)
-		err = cfg.Save()
-		if err != nil {
-			l.Warnln("Failed to save config", err)
-		}
-
-		return
-	}
+	l.SetFlags(LogFlags)
 
 	if info, err := os.Stat(baseDirs["config"]); err == nil && !info.IsDir() {
-		l.Fatalln("Config directory", baseDirs["config"], "is not a directory")
+		return fmt.Errorf("Config directory %s is not a directory", baseDirs["config"])
 	}
 
 	// Ensure that our home directory exists.
 	ensureDir(baseDirs["config"], 0700)
 
-	if reset {
-		resetDB()
-		return
-	}
-
 	syncthingMain()
-}
 
-func debugFacilities() string {
-	facilities := l.Facilities()
-
-	// Get a sorted list of names
-	var names []string
-	maxLen := 0
-	for name := range facilities {
-		names = append(names, name)
-		if len(name) > maxLen {
-			maxLen = len(name)
-		}
-	}
-	sort.Strings(names)
-
-	// Format the choices
-	b := new(bytes.Buffer)
-	for _, name := range names {
-		fmt.Fprintf(b, " %-*s - %s\n", maxLen, name, facilities[name])
-	}
-	return b.String()
+	return nil
 }
 
 func syncthingMain() {
@@ -375,11 +191,11 @@ func syncthingMain() {
 	// lines look ugly.
 	l.SetPrefix("[start] ")
 
-	if auditEnabled {
+	if AuditEnabled {
 		startAuditing(mainSvc)
 	}
 
-	if verbose {
+	if Verbose {
 		mainSvc.Add(newVerboseSvc())
 	}
 
@@ -527,7 +343,7 @@ func syncthingMain() {
 		// didn't work. At this point there isn't much to do beyond dropping
 		// the database and reindexing...
 		l.Infoln("Database corruption detected, unable to recover. Reinitializing...")
-		if err := resetDB(); err != nil {
+		if err := ResetDB(); err != nil {
 			l.Fatalln("Remove database:", err)
 		}
 		ldb, err = leveldb.OpenFile(dbFile, dbOpts)
@@ -561,7 +377,7 @@ func syncthingMain() {
 		m.StartDeadlockDetector(20 * time.Minute)
 	}
 
-	if paused {
+	if Paused {
 		for device := range cfg.Devices() {
 			m.PauseDevice(device)
 		}
@@ -730,6 +546,58 @@ func syncthingMain() {
 	}
 }
 
+func GenerateDir(generateDir string) error {
+	dir, err := osutil.ExpandTilde(generateDir)
+	if err != nil {
+		return fmt.Errorf("generate: %s", err)
+	}
+
+	info, err := os.Stat(dir)
+	if err == nil && !info.IsDir() {
+		return fmt.Errorf("%s is not a directory", dir)
+	}
+	if err != nil && os.IsNotExist(err) {
+		err = osutil.MkdirAll(dir, 0700)
+		if err != nil {
+			return fmt.Errorf("generate: %s", err)
+		}
+	}
+
+	certFile, keyFile := filepath.Join(dir, "cert.pem"), filepath.Join(dir, "key.pem")
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err == nil {
+		l.Warnln("Key exists; will not overwrite.")
+		l.Infoln("Device ID:", protocol.NewDeviceID(cert.Certificate[0]))
+	} else {
+		cert, err = tlsutil.NewCertificate(certFile, keyFile, tlsDefaultCommonName, tlsRSABits)
+		if err != nil {
+			return fmt.Errorf("Create certificate: %s", err)
+		}
+		myID = protocol.NewDeviceID(cert.Certificate[0])
+		if err != nil {
+			return fmt.Errorf("Load certificate: %s", err)
+		}
+		if err == nil {
+			l.Infoln("Device ID:", protocol.NewDeviceID(cert.Certificate[0]))
+		}
+	}
+
+	cfgFile := filepath.Join(dir, "config.xml")
+	if _, err := os.Stat(cfgFile); err == nil {
+		l.Warnln("Config exists; will not overwrite.")
+		return nil
+	}
+	var myName, _ = os.Hostname()
+	var newCfg = defaultConfig(myName)
+	var cfg = config.Wrap(cfgFile, newCfg)
+	err = cfg.Save()
+	if err != nil {
+		l.Warnln("Failed to save config", err)
+	}
+
+	return nil
+}
+
 // printHashRate prints the hashing performance in MB/s, formatting it with
 // appropriate precision for the value, i.e. 182 MB/s, 18 MB/s, 1.8 MB/s, 0.18
 // MB/s.
@@ -827,18 +695,12 @@ func setupGUI(mainSvc *suture.Supervisor, cfg *config.Wrapper, m *model.Model, a
 		return
 	}
 
-	api, err := newAPISvc(myID, cfg, guiAssets, m, apiSub, discoverer, relaySvc, errors, systemLog)
+	api, err := newAPISvc(myID, cfg, GuiAssets, m, apiSub, discoverer, relaySvc, errors, systemLog)
 	if err != nil {
 		l.Fatalln("Cannot start GUI:", err)
 	}
 	cfg.Subscribe(api)
 	mainSvc.Add(api)
-
-	if cfg.Options().StartBrowser && !noBrowser && !stRestarting {
-		// Can potentially block if the utility we are invoking doesn't
-		// fork, and just execs, hence keep it in it's own routine.
-		go openURL(guiCfg.URL())
-	}
 }
 
 func defaultConfig(myName string) config.Configuration {
@@ -883,7 +745,7 @@ func generatePingEvents() {
 	}
 }
 
-func resetDB() error {
+func ResetDB() error {
 	return os.RemoveAll(locations[locDatabase])
 }
 
